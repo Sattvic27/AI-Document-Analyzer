@@ -3,6 +3,7 @@ import base64
 import tempfile
 import json
 import re
+import platform
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -14,21 +15,23 @@ from groq import Groq
 
 load_dotenv()
 
-import shutil
-tesseract_path = shutil.which("tesseract") or r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-pytesseract.pytesseract.tesseract_cmd = tesseract_path
-print("Tesseract path:", tesseract_path)
+# ─── Tesseract path (Windows only) ───────────────────────────────────────────
+if platform.system() == "Windows":
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 app = Flask(__name__)
 CORS(app)
 
-
+# ─── Config ───────────────────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 API_KEY      = os.getenv("API_KEY", "sk_track2_987654321")
 
+if not GROQ_API_KEY:
+    print("WARNING: GROQ_API_KEY not set!")
+
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-
+# ─── API Key Auth ─────────────────────────────────────────────────────────────
 def check_api_key():
     key = request.headers.get("x-api-key")
     if not key or key != API_KEY:
@@ -38,7 +41,7 @@ def check_api_key():
         }), 401
     return None
 
-
+# ─── Text Extraction ──────────────────────────────────────────────────────────
 def extract_from_image(file_bytes):
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(file_bytes)
@@ -79,24 +82,17 @@ def extract_from_docx(file_bytes):
     finally:
         os.unlink(tmp_path)
 
-
+# ─── AI Analysis ──────────────────────────────────────────────────────────────
 def analyze_with_ai(text):
-
-    # Use only first 1500 chars to keep response short
     short_text = text[:1500]
 
-    prompt = f"""Analyze this document. Return ONLY a JSON object. No extra text.
+    prompt = f"""Analyze this document. Output ONLY this JSON, nothing else:
 
-Rules:
-- summary: max 15 words
-- names: ONLY real person names (like "John Smith"), max 3 items
-- dates: only actual dates, max 3 items
-- organizations: only company/org names, max 3 items  
-- amounts: only money values, max 3 items
-- sentiment: exactly one of: Positive, Neutral, Negative
+{{"summary":"one sentence max 10 words","entities":{{"names":["max 2 person names"],"dates":["max 2 dates"],"organizations":["max 2 orgs"],"amounts":["max 2 amounts"]}},"sentiment":"Positive"}}
 
-JSON format:
-{{"summary":"short summary here","entities":{{"names":[],"dates":[],"organizations":[],"amounts":[]}},"sentiment":"Neutral"}}
+Replace values with real data from document. Keep ALL values SHORT.
+Use Positive, Neutral, or Negative for sentiment.
+If nothing found for a list use [].
 
 Document:
 {short_text}"""
@@ -104,7 +100,7 @@ Document:
     response = groq_client.chat.completions.create(
         model="llama-3.1-8b-instant",
         temperature=0,
-        max_tokens=300,
+        max_tokens=500,
         messages=[
             {
                 "role": "system",
@@ -139,8 +135,7 @@ Document:
 
     return json.loads(raw)
 
-
-
+# ─── Routes ───────────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
@@ -178,14 +173,14 @@ def analyze_document():
             "message": "Invalid fileType. Supported: pdf, docx, image"
         }), 400
 
-    
+    # Decode Base64
     try:
         file_bytes = base64.b64decode(file_base64)
         print(f"File decoded: {len(file_bytes)} bytes")
     except Exception as e:
         return jsonify({"status": "error", "message": f"Invalid base64: {str(e)}"}), 400
 
-    
+    # Extract text
     try:
         if file_type == "image":
             extracted_text = extract_from_image(file_bytes)
@@ -213,7 +208,7 @@ def analyze_document():
         ai_result = analyze_with_ai(extracted_text)
     except json.JSONDecodeError as e:
         print("JSON PARSE ERROR:", str(e))
-        # Return fallback response instead of error
+        # Return fallback response
         return jsonify({
             "status":   "success",
             "fileName": file_name,
@@ -233,7 +228,7 @@ def analyze_document():
             "message": f"AI analysis failed: {str(e)}"
         }), 500
 
-    # Return response
+    # Return final response
     return jsonify({
         "status":   "success",
         "fileName": file_name,
@@ -248,6 +243,8 @@ def analyze_document():
     }), 200
 
 
+# ─── Run ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False)
+    
