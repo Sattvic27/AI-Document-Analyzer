@@ -12,19 +12,16 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ================= GROQ =================
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// ================= CREATE UPLOADS FOLDER IF NOT EXISTS =================
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
   console.log("✅ uploads/ folder created");
 }
 
-// ================= STORAGE =================
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, "uploads/");
@@ -36,7 +33,6 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
-// ================= ROUTES =================
 
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
@@ -46,13 +42,13 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const filePath = req.file.path;
 
-    // ===== OCR =====
+    
     const result = await Tesseract.recognize(filePath, "eng");
     const extractedText = result.data.text;
 
     console.log("OCR TEXT:", extractedText);
 
-    // ===== GROQ =====
+    
     const chatCompletion = await groq.chat.completions.create({
       model: "llama-3.1-8b-instant",
       temperature: 0,
@@ -86,13 +82,13 @@ ${extractedText}
 
     console.log("AI RAW OUTPUT:", aiOutput);
 
-    // ===== CLEAN OUTPUT =====
+    
     aiOutput = aiOutput
       .replace(/```json/g, "")
       .replace(/```/g, "")
       .trim();
 
-    // ===== SAFE PARSE =====
+    
     let parsedData;
     try {
       parsedData = JSON.parse(aiOutput);
@@ -103,7 +99,6 @@ ${extractedText}
       };
     }
 
-    // ===== CLEANUP uploaded file after processing =====
     fs.unlink(filePath, () => {});
 
     res.json({
@@ -120,8 +115,6 @@ ${extractedText}
   }
 });
 
-// ================= SERVER =================
-// ✅ FIX: Use process.env.PORT for Render, fallback to 5000 locally
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

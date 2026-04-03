@@ -14,7 +14,6 @@ from groq import Groq
 
 load_dotenv()
 
-# ─── Tesseract path (Windows) ─────────────────────────────────────────────────
 import shutil
 tesseract_path = shutil.which("tesseract") or r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 pytesseract.pytesseract.tesseract_cmd = tesseract_path
@@ -23,13 +22,13 @@ print("Tesseract path:", tesseract_path)
 app = Flask(__name__)
 CORS(app)
 
-# ─── Config ───────────────────────────────────────────────────────────────────
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 API_KEY      = os.getenv("API_KEY", "sk_track2_987654321")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# ─── API Key Auth ─────────────────────────────────────────────────────────────
+
 def check_api_key():
     key = request.headers.get("x-api-key")
     if not key or key != API_KEY:
@@ -39,7 +38,7 @@ def check_api_key():
         }), 401
     return None
 
-# ─── Text Extraction ──────────────────────────────────────────────────────────
+
 def extract_from_image(file_bytes):
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
         tmp.write(file_bytes)
@@ -80,7 +79,7 @@ def extract_from_docx(file_bytes):
     finally:
         os.unlink(tmp_path)
 
-# ─── AI Analysis ──────────────────────────────────────────────────────────────
+
 def analyze_with_ai(text):
 
     # Use only first 1500 chars to keep response short
@@ -140,7 +139,7 @@ Document:
 
     return json.loads(raw)
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
+
 
 @app.route("/", methods=["GET"])
 def home():
@@ -179,14 +178,14 @@ def analyze_document():
             "message": "Invalid fileType. Supported: pdf, docx, image"
         }), 400
 
-    # Decode Base64
+    
     try:
         file_bytes = base64.b64decode(file_base64)
         print(f"File decoded: {len(file_bytes)} bytes")
     except Exception as e:
         return jsonify({"status": "error", "message": f"Invalid base64: {str(e)}"}), 400
 
-    # Extract text
+    
     try:
         if file_type == "image":
             extracted_text = extract_from_image(file_bytes)
@@ -249,7 +248,6 @@ def analyze_document():
     }), 200
 
 
-# ─── Run ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
